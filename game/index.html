@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CINDERSITE — a tactical FPS in the browser</title>
+<style>
+  :root{
+    --ink:#e8e4da; --dim:#9a958a; --ember:#ff7a29; --ember2:#ffb347;
+    --teal:#2fd4c4; --panel:rgba(12,14,18,.82); --line:rgba(232,228,218,.16);
+    --bad:#ff5147; --good:#57e389;
+  }
+  *{box-sizing:border-box} html,body{margin:0;height:100%;overflow:hidden;background:#0b0d10}
+  body{font-family:"Segoe UI",system-ui,-apple-system,sans-serif;color:var(--ink)}
+  #app{position:fixed;inset:0} canvas{display:block}
+  .hud{position:fixed;inset:0;pointer-events:none;z-index:5}
+  /* top centre: round state */
+  #topbar{position:absolute;top:14px;left:50%;transform:translateX(-50%);display:flex;align-items:stretch;gap:0;
+    background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  #topbar .cell{padding:6px 16px;text-align:center;min-width:74px}
+  #topbar .lab{font-size:10px;letter-spacing:2px;color:var(--dim)}
+  #topbar .val{font-size:22px;font-weight:700;line-height:1.1;font-variant-numeric:tabular-nums}
+  #timer.warn{color:var(--bad)}
+  #score-us .val{color:var(--ember2)} #score-them .val{color:var(--teal)}
+  /* bottom left: vitals */
+  #vitals{position:absolute;left:22px;bottom:20px;background:var(--panel);border:1px solid var(--line);
+    border-radius:10px;padding:10px 16px;min-width:210px}
+  #hp-row{display:flex;align-items:baseline;gap:10px}
+  #hp{font-size:34px;font-weight:800;line-height:1}
+  #armor{font-size:15px;color:var(--teal);font-weight:700}
+  #hpbar{height:6px;background:#26262c;border-radius:3px;margin-top:8px;overflow:hidden}
+  #hpfill{height:100%;background:linear-gradient(90deg,#57e389,#b7f04c);width:100%}
+  #money{margin-top:8px;font-size:16px;color:var(--good);font-weight:700}
+  /* bottom right: weapon */
+  #weaponbox{position:absolute;right:22px;bottom:20px;background:var(--panel);border:1px solid var(--line);
+    border-radius:10px;padding:10px 16px;text-align:right;min-width:190px}
+  #wname{font-size:13px;letter-spacing:2px;color:var(--dim)}
+  #ammo{font-size:34px;font-weight:800;line-height:1.05;font-variant-numeric:tabular-nums}
+  #ammo .res{font-size:17px;color:var(--dim);font-weight:600}
+  #ammo.low{color:var(--bad)} #hintline{font-size:11px;color:var(--dim);margin-top:2px}
+  /* crosshair + hitmarker */
+  #cross{position:absolute;left:50%;top:50%;width:22px;height:22px;transform:translate(-50%,-50%)}
+  #cross::before,#cross::after{content:"";position:absolute;background:rgba(232,228,218,.9)}
+  #cross::before{left:50%;top:0;width:2px;height:100%;transform:translateX(-50%);
+    -webkit-mask:linear-gradient(#000 0 32%,transparent 32% 68%,#000 68%);mask:linear-gradient(#000 0 32%,transparent 32% 68%,#000 68%)}
+  #cross::after{top:50%;left:0;height:2px;width:100%;transform:translateY(-50%);
+    -webkit-mask:linear-gradient(90deg,#000 0 32%,transparent 32% 68%,#000 68%);mask:linear-gradient(90deg,#000 0 32%,transparent 32% 68%,#000 68%)}
+  #hitmark{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) rotate(45deg);width:18px;height:18px;
+    border:2px solid var(--ember2);opacity:0;transition:opacity .25s}
+  #dmgvin{position:absolute;inset:0;background:radial-gradient(ellipse at center,transparent 55%,rgba(255,40,30,.38) 100%);opacity:0;transition:opacity .3s}
+  /* centre banners */
+  #banner{position:absolute;left:50%;top:26%;transform:translateX(-50%);text-align:center;width:100%}
+  #banner .big{font-size:44px;font-weight:800;letter-spacing:1px;text-shadow:0 3px 18px rgba(0,0,0,.7)}
+  #banner .sub{font-size:16px;color:var(--dim);margin-top:4px}
+  #interact{position:absolute;left:50%;top:58%;transform:translateX(-50%);text-align:center}
+  #interact .bar{width:240px;height:8px;background:#26262c;border-radius:4px;margin:8px auto 0;overflow:hidden}
+  #interact .fill{height:100%;background:var(--ember);width:0%}
+  /* kill feed + alive pips */
+  #feed{position:absolute;right:22px;top:70px;text-align:right;font-size:13px;line-height:1.7;color:var(--dim)}
+  #feed b{color:var(--ink)} #feed .k-us{color:var(--ember2)} #feed .k-them{color:var(--teal)}
+  #alive{position:absolute;left:22px;top:70px;font-size:13px;color:var(--dim);line-height:1.7}
+  .pip{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;background:#3a3a42}
+  .pip.us{background:var(--ember)} .pip.them{background:var(--teal)} .pip.dead{opacity:.22}
+  /* buy menu */
+  #buy{position:absolute;inset:0;background:rgba(5,6,8,.72);display:none;pointer-events:auto}
+  #buy .sheet{max-width:760px;margin:7vh auto;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px 26px}
+  #buy h2{margin:0 0 2px;font-size:22px} #buy .cash{color:var(--good);font-weight:700}
+  #buy .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 22px;margin-top:14px}
+  .buyitem{display:flex;justify-content:space-between;gap:12px;padding:9px 12px;border:1px solid var(--line);border-radius:9px;font-size:14px}
+  .buyitem .key{color:var(--ember2);font-weight:800}
+  .buyitem.owned{opacity:.45} .buyitem.cant{opacity:.45}
+  .buyitem .price{color:var(--good);font-weight:700}
+  #buy .foot{margin-top:14px;font-size:12px;color:var(--dim)}
+  /* start / end overlay */
+  #overlay{position:absolute;inset:0;background:rgba(5,6,8,.66);display:flex;align-items:center;justify-content:center;pointer-events:auto}
+  #overlay .card{max-width:620px;text-align:center;padding:30px 34px;background:var(--panel);border:1px solid var(--line);border-radius:16px}
+  #overlay h1{margin:0;font-size:40px;letter-spacing:1px} #overlay h1 span{color:var(--ember)}
+  #overlay p{color:var(--dim);line-height:1.55;font-size:15px}
+  #overlay .keys{font-size:13px;color:var(--ink);line-height:2}
+  #overlay .keys b{display:inline-block;min-width:86px;color:var(--ember2);text-align:right;margin-right:10px}
+  #startbtn{margin-top:14px;background:var(--ember);border:0;color:#14100c;font-size:17px;font-weight:800;
+    padding:13px 34px;border-radius:999px;cursor:pointer}
+  #planted{position:absolute;left:50%;top:70px;transform:translateX(-50%);color:var(--bad);font-weight:800;
+    letter-spacing:2px;font-size:14px;display:none}
+</style>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three/three.module.min.js" } }
+</script>
+</head>
+<body>
+<div id="app"></div>
+
+<div class="hud" id="hud" style="visibility:hidden">
+  <div id="topbar">
+    <div class="cell" id="score-us"><div class="lab">ASHBORNE</div><div class="val">0</div></div>
+    <div class="cell"><div class="lab" id="phaselab">BUY PHASE</div><div class="val" id="timer">0:10</div></div>
+    <div class="cell" id="score-them"><div class="lab">WARDENS</div><div class="val">0</div></div>
+  </div>
+  <div id="planted">● BOMB PLANTED</div>
+  <div id="alive"></div>
+  <div id="feed"></div>
+  <div id="vitals">
+    <div id="hp-row"><div id="hp">100</div><div id="armor">🛡 0</div></div>
+    <div id="hpbar"><div id="hpfill"></div></div>
+    <div id="money">$800</div>
+  </div>
+  <div id="weaponbox">
+    <div id="wname">PISTOL</div>
+    <div id="ammo">12 <span class="res">/ 48</span></div>
+    <div id="hintline">R reload · B buy · G grenade</div>
+  </div>
+  <div id="cross"></div><div id="hitmark"></div><div id="dmgvin"></div>
+  <div id="banner"><div class="big"></div><div class="sub"></div></div>
+  <div id="interact" style="display:none"><div class="txt">HOLD E</div><div class="bar"><div class="fill"></div></div></div>
+</div>
+
+<div id="buy"><div class="sheet">
+  <h2>Buy menu — <span class="cash" id="buycash">$800</span></h2>
+  <div style="font-size:13px;color:var(--dim)">Press the number key. Buying is instant; the round starts when the timer ends or you press B again.</div>
+  <div class="grid" id="buygrid"></div>
+  <div class="foot">Kills pay $300 · planting pays your team $800 · a round win pays $2,700, a loss $1,900.</div>
+</div></div>
+
+<div id="overlay"><div class="card">
+  <h1>CINDER<span>SITE</span></h1>
+  <p>A 5v5 tactical shooter in one HTML file. You lead the <b style="color:var(--ember2)">Ashborne</b>:
+  fight through the foundry, plant the bomb at site A or B, and hold it.
+  The <b style="color:var(--teal)">Wardens</b> will try to stop you — or defuse it.</p>
+  <div class="keys">
+    <div><b>W A S D</b> move</div>
+    <div><b>Mouse</b> look · <b>Click</b> fire</div>
+    <div><b>Shift / C</b> walk / crouch — quiet and accurate</div>
+    <div><b>1 2 3</b> rifle / pistol / grenade slots</div>
+    <div><b>R</b> reload · <b>B</b> buy menu · <b>E (hold)</b> plant</div>
+  </div>
+  <button id="startbtn">DEPLOY</button>
+  <p style="font-size:12px">First to 7 rounds takes the match. Headshots pay double damage — accuracy beats spraying.</p>
+</div></div>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
