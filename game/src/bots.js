@@ -5,6 +5,7 @@ import * as THREE from "three";
 import { PAL, mat } from "./palette.js";
 import { collide, findPath, nearestNode, rayHit } from "./world.js";
 import { Gun, WEAPONS } from "./weapon.js";
+import { losBlocked } from "./fx.js";
 
 const NAMES_US = ["VIPER", "JUNO", "MAGMA", "OTIS"];
 const NAMES_THEM = ["WARD", "SABLE", "IRONS", "PETRA", "HOLT"];
@@ -25,15 +26,20 @@ export class Bot {
     this.seeT = 0; this.target = null; this.reactT = 0; this.lastKnown = null;
     this.burst = 0; this.burstCool = 0.4 + Math.random() * 0.5; this.strafeDir = 1; this.strafeT = 0;
     this.channel = 0; this.skill = 0.82 + Math.random() * 0.3; // aim/reaction scaler
+    this.blindT = 0; this.kit = false;
     this.mesh = buildSoldier(team);
+    const plate = makeNameplate(this.name, team);
+    plate.position.y = 2.02;
+    this.mesh.add(plate);
     this.mesh.position.copy(this.pos);
     scene.add(this.mesh);
   }
-  reset(spawn) {
+  reset(spawn, faceYaw) {
     this.pos.set(spawn[0], 0, spawn[1]);
-    this.yaw = this.team === "us" ? 0 : Math.PI;
+    this.yaw = faceYaw !== undefined ? faceYaw : this.team === "us" ? 0 : Math.PI;
     this.hp = 100; this.alive = true; this.state = "advance";
     this.path = []; this.target = null; this.lastKnown = null; this.channel = 0;
+    this.blindT = 0;
     this.mesh.visible = true;
     this.mesh.position.copy(this.pos);
     this.mesh.rotation.set(0, 0, 0);
@@ -74,6 +80,15 @@ export class Bot {
     if (!this.alive) return;
     const { colliders, nav, fighters, phase } = env;
     this.repathT -= dt; this.seeT -= dt;
+    if (this.blindT > 0) {
+      // flashed: no perception, no shots, a stunned half-step and a held angle
+      this.blindT -= dt;
+      this.target = null;
+      collide(colliders, this.pos, this.radius);
+      this.mesh.position.copy(this.pos);
+      this.mesh.rotation.y = this.yaw;
+      return;
+    }
     // --- perception (checked on a stagger so 9 bots don't raycast every frame)
     if (this.seeT <= 0) {
       this.seeT = 0.11 + Math.random() * 0.05;
@@ -89,18 +104,21 @@ export class Bot {
         if (diff > 2.6 && d > 4) continue;
         const wall = rayHit(colliders, this.pos.x, this.eyeY(), this.pos.z, dx / d, 0, dz / d, d);
         if (wall < d - 0.6) continue;
+        if (losBlocked(this.pos.x, this.eyeY(), this.pos.z, f.pos.x, 1.2, f.pos.z)) continue; // smoke cuts the line
         if (d < seenD) { seenD = d; seen = f; }
       }
       if (seen) {
-        if (this.target !== seen) this.reactT = (0.42 - this.skill * 0.18) * (0.8 + Math.random() * 0.5);
+        const fresh = this.target !== seen;
+        if (fresh) this.reactT = (0.42 - this.skill * 0.18) * (0.8 + Math.random() * 0.5);
         this.target = seen; this.lastKnown = { x: seen.pos.x, z: seen.pos.z };
+        if (fresh && env.onContact) env.onContact(this, seen);
       } else if (this.target && !this.target.alive) this.target = null;
       else if (this.target) {
         // lost sight: keep the target briefly, then fall back to lastKnown
         const dx = this.target.pos.x - this.pos.x, dz = this.target.pos.z - this.pos.z;
         const d = Math.hypot(dx, dz) || 1;
         const wall = rayHit(colliders, this.pos.x, this.eyeY(), this.pos.z, dx / d, 0, dz / d, d);
-        if (wall < d - 0.6) this.target = null;
+        if (wall < d - 0.6 || losBlocked(this.pos.x, this.eyeY(), this.pos.z, this.target.pos.x, 1.2, this.target.pos.z)) this.target = null;
       }
     }
     // --- act
@@ -162,6 +180,25 @@ export class Bot {
     const arm = this.mesh.userData.armR;
     if (arm) arm.rotation.x = this.target ? -0.25 : 0.15;
   }
+}
+
+// A floating nameplate: the bot's callsign in its team colour. It makes a
+// screenshot read like a squad, not a crowd of strangers.
+function makeNameplate(name, team) {
+  const c = document.createElement("canvas");
+  c.width = 256; c.height = 56;
+  const g = c.getContext("2d");
+  g.fillStyle = "rgba(8,10,13,0.55)";
+  g.fillRect(28, 8, 200, 40);
+  g.font = "800 27px system-ui, sans-serif";
+  g.textAlign = "center"; g.textBaseline = "middle";
+  g.fillStyle = team === "us" ? "#ffb347" : "#2fd4c4";
+  g.fillText(name, 128, 29);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
+  spr.scale.set(1.5, 0.33, 1);
+  return spr;
 }
 
 function buildSoldier(team) {

@@ -9,16 +9,27 @@ import * as Snd from "./audio.js";
 export const WEAPONS = {
   knife:   { name: "KNIFE",   price: 0,    slot: 3, dmg: 55, head: 2.0, rpm: 0,    mag: 0,  reserve: 0,   reload: 0,   spread: 0,     kick: 0,    range: 2.2, auto: false, heavy: false },
   pistol:  { name: "PISTOL",  price: 300,  slot: 2, dmg: 26, head: 2.4, rpm: 380,  mag: 12, reserve: 48,  reload: 1.1, spread: 0.006, kick: 0.55, range: 90,  auto: false, heavy: false },
+  shotgun: { name: "SHOTGUN", price: 1100, slot: 1, dmg: 9,  head: 1.4, rpm: 75,   mag: 6,  reserve: 24,  reload: 2.6, spread: 0.052, kick: 2.2,  range: 34,  auto: false, heavy: true, pellets: 8 },
   smg:     { name: "SMG",     price: 1200, slot: 1, dmg: 19, head: 2.2, rpm: 780,  mag: 30, reserve: 90,  reload: 1.7, spread: 0.013, kick: 0.4,  range: 80,  auto: true,  heavy: false },
   rifle:   { name: "RIFLE",   price: 2700, slot: 1, dmg: 34, head: 2.6, rpm: 620,  mag: 25, reserve: 75,  reload: 2.0, spread: 0.008, kick: 0.85, range: 120, auto: true,  heavy: false },
-  longshot:{ name: "LONGSHOT",price: 4300, slot: 1, dmg: 96, head: 1.6, rpm: 55,   mag: 5,  reserve: 20,  reload: 2.8, spread: 0.0015,kick: 2.6,  range: 200, auto: false, heavy: true },
-  grenade: { name: "GRENADE", price: 300,  slot: 3, dmg: 78, head: 1.0, rpm: 0,    mag: 1,  reserve: 0,   reload: 0,   spread: 0,     kick: 0,    range: 0,   auto: false, heavy: false, blast: 5.2 },
+  longshot:{ name: "LONGSHOT DMR", price: 4300, slot: 1, dmg: 96, head: 1.6, rpm: 55, mag: 5, reserve: 20, reload: 2.8, spread: 0.0015, kick: 2.6, range: 200, auto: false, heavy: true, scoped: true },
+  grenade: { name: "FRAG",    price: 300,  slot: 3, dmg: 78, head: 1.0, rpm: 0,    mag: 1,  reserve: 0,   reload: 0,   spread: 0,     kick: 0,    range: 0,   auto: false, heavy: false, blast: 5.2 },
+  smoke:   { name: "SMOKE",   price: 250,  slot: 3, dmg: 0,  head: 1.0, rpm: 0,    mag: 1,  reserve: 0,   reload: 0,   spread: 0,     kick: 0,    range: 0,   auto: false, heavy: false },
+  flash:   { name: "FLASH",   price: 200,  slot: 3, dmg: 0,  head: 1.0, rpm: 0,    mag: 1,  reserve: 0,   reload: 0,   spread: 0,     kick: 0,    range: 0,   auto: false, heavy: false },
 };
 export const ARMOR_PRICE = 650;
+export const KIT_PRICE = 400;
 export const BUY_LIST = [
-  { key: "1", id: "pistol", label: "Pistol" }, { key: "2", id: "smg", label: "SMG" },
-  { key: "3", id: "rifle", label: "Rifle" }, { key: "4", id: "longshot", label: "Longshot" },
-  { key: "5", id: "armor", label: "Armor + helmet" }, { key: "6", id: "grenade", label: "Grenade" },
+  { key: "1", id: "pistol", label: "Pistol", cat: "SIDEARM", desc: "Reliable. 2.4× headshots, free reloads of dignity." },
+  { key: "2", id: "shotgun", label: "Shotgun", cat: "HEAVY", desc: "8 pellets. Ends arguments up close." },
+  { key: "3", id: "smg", label: "SMG", cat: "HEAVY", desc: "Fast, loose, loud. Run-and-gun money." },
+  { key: "4", id: "rifle", label: "Rifle", cat: "RIFLES", desc: "The default answer at any range." },
+  { key: "5", id: "longshot", label: "Longshot DMR", cat: "RIFLES", desc: "Scoped — right-click to aim. One breath, one round." },
+  { key: "6", id: "armor", label: "Armor + helmet", cat: "GEAR & UTILITY", desc: "Soaks 45% of every hit." },
+  { key: "7", id: "grenade", label: "Frag grenade", cat: "GEAR & UTILITY", desc: "78 blast damage. Clears corners and planters." },
+  { key: "8", id: "smoke", label: "Smoke grenade", cat: "GEAR & UTILITY", desc: "Cuts a sight line for 15 seconds." },
+  { key: "9", id: "flash", label: "Flash grenade", cat: "GEAR & UTILITY", desc: "Blinds whoever is looking. Throw, then swing." },
+  { key: "0", id: "kit", label: "Defuse kit", cat: "GEAR & UTILITY", desc: "Defuse in 3s instead of 5. Second-half gold." },
 ];
 
 export class Gun {
@@ -100,7 +111,7 @@ export function viewModel(kind, teamColor) {
     s.position.set(0, -0.02, -0.08); g.add(s);
     add(0.03, 0.05, 0.03, 0, 0.05, -0.08, mat(0x777777));
   } else { // rifles / smg / longshot share a silhouette, longshot is longer
-    const L = kind === "longshot" ? 0.86 : kind === "smg" ? 0.52 : 0.68;
+    const L = kind === "longshot" ? 0.86 : kind === "smg" ? 0.52 : kind === "shotgun" ? 0.5 : 0.68;
     add(0.075, 0.13, L, 0, 0, -L / 2 + 0.08);
     add(0.05, 0.05, L * 0.5, 0, 0.015, -L - 0.02, grip);
     add(0.055, 0.2, 0.09, 0, -0.14, -0.08, grip);

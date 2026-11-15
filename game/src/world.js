@@ -2,7 +2,7 @@
 // Geometry is data-driven: every solid is an AABB that doubles as its own
 // collision box, so what you see is exactly what stops bullets and bodies.
 import * as THREE from "three";
-import { PAL, mat, box } from "./palette.js";
+import { PAL, mat, box, panel } from "./palette.js";
 
 // Layout entries: [cx, cz, w, d, h, materialKey, yBase?]
 // The yard is 76 x 60 m. Attackers (us) spawn south, Wardens north.
@@ -38,6 +38,24 @@ export const SPAWNS = {
   them: [[-20, -25], [20, -25], [-26, -22], [26, -22], [0, -27]],
 };
 
+// Named zones — radio callouts and the minimap speak in these names, the way
+// real squads do. First match wins; sites are checked before their lanes.
+export const ZONES = [
+  { name: "A SITE", x: -26, z: -11, r: 9 },
+  { name: "B SITE", x: 26, z: -9, r: 9 },
+  { name: "FOUNDRY", x: -24, z: -22, r: 9 },
+  { name: "SILO 3", x: 27, z: -8, r: 12 },
+  { name: "A LONG", x: -27, z: 6, r: 10 },
+  { name: "B LONG", x: 25, z: 7, r: 10 },
+  { name: "MID SPINE", x: 0, z: -4, r: 9 },
+  { name: "NORTH CAMP", x: 0, z: -25, r: 8 },
+  { name: "SOUTH YARD", x: 0, z: 24, r: 10 },
+];
+export function zoneAt(x, z) {
+  for (const zn of ZONES) if (Math.hypot(x - zn.x, z - zn.z) <= zn.r) return zn.name;
+  return z < -14 ? "NORTH LANE" : z > 12 ? "SOUTH LANE" : "THE YARD";
+}
+
 // Waypoint graph for bot navigation: nodes on the lanes, edges walkable.
 const NODES = [
   [-6, 22], [6, 22], [-18, 16], [16, 14], [-26, 2], [-8, 4], [8, 2], [24, 4],
@@ -54,8 +72,8 @@ const EDGES = [
 export function buildWorld(scene) {
   scene.background = new THREE.Color(PAL.sky);
   scene.fog = new THREE.Fog(PAL.fog, PAL.fogNear, PAL.fogFar);
-  scene.add(new THREE.HemisphereLight(0xbdd0dd, 0x3a3128, 1.12));
-  const sun = new THREE.DirectionalLight(0xffd9b0, 1.5);
+  scene.add(new THREE.HemisphereLight(0xbdd0dd, 0x3a3128, 1.34));
+  const sun = new THREE.DirectionalLight(0xffd9b0, 1.72);
   sun.position.set(-30, 42, 18);
   scene.add(sun);
   const emberLight = new THREE.PointLight(PAL.emberGlow, 60, 26, 1.8);
@@ -64,7 +82,7 @@ export function buildWorld(scene) {
 
   const ground = new THREE.Mesh(
     new THREE.PlaneGeometry(78, 62),
-    mat(PAL.ground)
+    mat(0xc2c8d0, { tex: "cobble" })
   );
   ground.rotation.x = -Math.PI / 2;
   scene.add(ground);
@@ -89,7 +107,11 @@ export function buildWorld(scene) {
   }
 
   const colliders = [];
-  const mats = { wall: mat(PAL.wall), wallDark: mat(PAL.wallDark), crate: mat(PAL.crate), crateAlt: mat(PAL.crateAlt), metal: mat(PAL.metal), furnace: mat(PAL.furnace, { emissive: 0x903500, ei: 0.35 }) };
+  const mats = {
+    wall: mat(0xd8c9b4, { tex: "brick" }), wallDark: mat(0x9c8f7a, { tex: "brick" }),
+    crate: mat(0xd9b98c, { tex: "wood" }), crateAlt: mat(0xb9c4cc, { tex: "metal" }),
+    metal: mat(0xc3ccd4, { tex: "metal" }), furnace: mat(0xa89c8c, { tex: "concrete", emissive: 0x903500, ei: 0.3 }),
+  };
   for (const [cx, cz, w, d, h, key] of LAYOUT) {
     const m = box(w, h, d, mats[key]);
     m.position.set(cx, h / 2, cz);
@@ -106,6 +128,26 @@ export function buildWorld(scene) {
     const cap = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 2.6, 0.8, 14), mat(PAL.trim));
     cap.position.set(x, 7.4, z);
     scene.add(cap);
+  }
+
+  // --- signage: painted site letters on the ground, stencil signs on walls.
+  // A player (and a screenshot) should know where they are without a briefing.
+  for (const s of [SITES.A, SITES.B]) {
+    const letter = panel(s.name.slice(-1), 7, 3.5, s === SITES.A ? "#ffb347" : "#2fd4c4", 120);
+    letter.rotation.x = -Math.PI / 2;
+    letter.position.set(s.x, 0.06, s.z + 3.4);
+    scene.add(letter);
+  }
+  const signs = [
+    ["SITE A", -26, 2.3, -15.9, 0, "#ffb347"], ["SITE B", 13.3, 2.3, -14, -Math.PI / 2, "#2fd4c4"],
+    ["FOUNDRY", -26, 3.2, -8.4, 0, "#f5ede0"], ["SILO 3", 24, 4.2, 0.6, 0, "#f5ede0"],
+    ["MID", 0.7, 2.1, 8, Math.PI / 2, "#f5ede0"], ["A LONG", -33.9, 1.9, 2, Math.PI / 2, "#f5ede0"],
+  ];
+  for (const [text, x, y, z, ry, color] of signs) {
+    const p = panel(text, 4.6, 2.3, color, 64);
+    p.position.set(x, y, z);
+    p.rotation.y = ry;
+    scene.add(p);
   }
 
   const nav = NODES.map(([x, z], i) => ({ i, x, z, next: [] }));
