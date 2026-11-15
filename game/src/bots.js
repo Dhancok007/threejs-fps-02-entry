@@ -5,7 +5,7 @@ import * as THREE from "three";
 import { PAL, mat } from "./palette.js";
 import { collide, findPath, nearestNode, rayHit } from "./world.js";
 import { Gun, WEAPONS } from "./weapon.js";
-import { losBlocked } from "./fx.js";
+import { losBlocked, inFire } from "./fx.js";
 
 const NAMES_US = ["VIPER", "JUNO", "MAGMA", "OTIS"];
 const NAMES_THEM = ["WARD", "SABLE", "IRONS", "PETRA", "HOLT"];
@@ -159,6 +159,16 @@ export class Bot {
     }
     if (this.gun.reloading > 0) { this.gun.reloading -= dt; if (this.gun.reloading <= 0) { const need = this.gun.def.mag - this.gun.mag; const take = Math.min(need, this.gun.reserve); this.gun.mag += take; this.gun.reserve -= take; } }
     if (this.gun.empty && this.gun.reserve > 0 && this.gun.reloading <= 0) this.gun.reloading = this.gun.def.reload;
+    // --- fire discipline: a bot standing in an incendiary zone drops every
+    // other job and runs for cold ground. Standing in fire to finish a duel
+    // is how bots die stupidly; the zone wins, the duel waits.
+    const burn = inFire(this.pos.x, this.pos.z);
+    if (burn) {
+      const dx = this.pos.x - burn.x, dz = this.pos.z - burn.z;
+      const d = Math.hypot(dx, dz) || 1;
+      moveTarget = { x: burn.x + (dx / d) * (burn.r + 3), z: burn.z + (dz / d) * (burn.r + 3) };
+      speed = 5.6;
+    }
     // --- move
     if (moveTarget) {
       const dx = moveTarget.x - this.pos.x, dz = moveTarget.z - this.pos.z;

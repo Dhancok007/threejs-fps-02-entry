@@ -4,7 +4,7 @@
 // a flash overlay, and the full match scoreboard.
 import { WEAPONS, BUY_LIST, ARMOR_PRICE, KIT_PRICE } from "./weapon.js";
 import { SITES } from "./world.js";
-import { activeSmokes } from "./fx.js";
+import { activeSmokes, activeFires } from "./fx.js";
 import { roleOf } from "./radio.js";
 
 const $ = (id) => document.getElementById(id);
@@ -122,6 +122,12 @@ export class HUD {
       g.fillStyle = "rgba(190,198,208,0.35)";
       g.beginPath(); g.arc(px(s.x), pz(s.z), (s.r / 78) * W, 0, 7); g.fill();
     }
+    for (const s of activeFires()) {
+      g.fillStyle = "rgba(255,110,30,0.5)";
+      g.beginPath(); g.arc(px(s.x), pz(s.z), (s.r / 78) * W, 0, 7); g.fill();
+      g.fillStyle = "rgba(255,190,60,0.65)";
+      g.beginPath(); g.arc(px(s.x), pz(s.z), (s.r / 78) * W * 0.55, 0, 7); g.fill();
+    }
     for (const key of ["A", "B"]) {
       const s = SITES[key];
       g.strokeStyle = key === "A" ? "#ffb347" : "#2fd4c4";
@@ -134,6 +140,7 @@ export class HUD {
     g.fillText("MID", px(0), pz(-4) + 3);
     g.fillText("FOUNDRY", px(-24), pz(-23) + 3);
     g.fillText("SILO", px(28), pz(4) + 3);
+    g.fillText("DOCKS", px(31), pz(21) + 3);
     for (const f of fighters) {
       if (!f.alive) continue;
       if (f.isPlayer) continue;

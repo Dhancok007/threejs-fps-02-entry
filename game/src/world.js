@@ -27,6 +27,14 @@ const LAYOUT = [
   // north lane cover (defender side)
   [-12, -24, 2.4, 2.4, 1.2, "crateAlt"], [10, -24, 4.8, 2.4, 2.4, "crate"],
   [0, -26, 8, 1, 2.6, "wall"],
+  // docks (east edge): container stacks — long walls of coloured cover with
+  // two lanes cut between them; the crane legs stand at the yard's edge
+  [33, 13, 6, 2.6, 2.6, "contA"], [33, 19.5, 6, 2.6, 5.2, "contB"], [33, 26, 6, 2.6, 2.6, "contC"],
+  [28.5, 22.5, 2.4, 2.4, 1.2, "crate"], [36.8, 12, 0.6, 0.6, 11, "metal"], [36.8, 27, 0.6, 0.6, 11, "metal"],
+  // gantry posts flanking the mid door (the beam rides above head height)
+  [-3.4, -5, 0.5, 0.5, 5.6, "metal"], [3.4, -5, 0.5, 0.5, 5.6, "metal"],
+  // barrel blocks: tight little cover squares out in the lanes
+  [-8, 12, 1, 1, 1.1, "metal"], [14, -20, 1, 1, 1.1, "metal"], [-20, 16, 1, 1, 1.1, "metal"],
 ];
 
 export const SITES = {
@@ -46,6 +54,7 @@ export const ZONES = [
   { name: "FOUNDRY", x: -24, z: -22, r: 9 },
   { name: "SILO 3", x: 27, z: -8, r: 12 },
   { name: "A LONG", x: -27, z: 6, r: 10 },
+  { name: "DOCKS", x: 31, z: 20, r: 10 },
   { name: "B LONG", x: 25, z: 7, r: 10 },
   { name: "MID SPINE", x: 0, z: -4, r: 9 },
   { name: "NORTH CAMP", x: 0, z: -25, r: 8 },
@@ -61,19 +70,21 @@ const NODES = [
   [-6, 22], [6, 22], [-18, 16], [16, 14], [-26, 2], [-8, 4], [8, 2], [24, 4],
   [-26, -11], [-16, -11], [0, -10], [16, -9], [26, -9], [-8, -20], [8, -20],
   [-24, -24], [24, -24], [0, -24], [-16, 6], [18, 8],
+  [27, 16], [27, 23], [34, 16], [34, 23],
 ];
 const EDGES = [
   [0, 2], [0, 5], [1, 3], [1, 6], [2, 4], [2, 18], [3, 7], [3, 19], [4, 8],
   [4, 5], [5, 6], [5, 9], [6, 7], [6, 10], [7, 12], [7, 11], [8, 9], [9, 10],
   [9, 13], [10, 11], [10, 14], [11, 12], [12, 16], [13, 14], [13, 15], [14, 17],
   [15, 8], [16, 12], [17, 14], [18, 5], [19, 6], [18, 2], [19, 3],
+  [3, 20], [7, 20], [20, 21], [20, 22], [21, 23], [22, 23],
 ];
 
 export function buildWorld(scene) {
   scene.background = new THREE.Color(PAL.sky);
   scene.fog = new THREE.Fog(PAL.fog, PAL.fogNear, PAL.fogFar);
-  scene.add(new THREE.HemisphereLight(0xbdd0dd, 0x3a3128, 1.34));
-  const sun = new THREE.DirectionalLight(0xffd9b0, 1.72);
+  scene.add(new THREE.HemisphereLight(0xbdd0dd, 0x3a3128, 1.52));
+  const sun = new THREE.DirectionalLight(0xffd9b0, 1.95);
   sun.position.set(-30, 42, 18);
   scene.add(sun);
   const emberLight = new THREE.PointLight(PAL.emberGlow, 60, 26, 1.8);
@@ -111,6 +122,7 @@ export function buildWorld(scene) {
     wall: mat(0xd8c9b4, { tex: "brick" }), wallDark: mat(0x9c8f7a, { tex: "brick" }),
     crate: mat(0xd9b98c, { tex: "wood" }), crateAlt: mat(0xb9c4cc, { tex: "metal" }),
     metal: mat(0xc3ccd4, { tex: "metal" }), furnace: mat(0xa89c8c, { tex: "concrete", emissive: 0x903500, ei: 0.3 }),
+    contA: mat(0xc05a30, { tex: "metal" }), contB: mat(0x2e8f96, { tex: "metal" }), contC: mat(0xd9a92c, { tex: "metal" }),
   };
   for (const [cx, cz, w, d, h, key] of LAYOUT) {
     const m = box(w, h, d, mats[key]);
@@ -142,12 +154,70 @@ export function buildWorld(scene) {
     ["SITE A", -26, 2.3, -15.9, 0, "#ffb347"], ["SITE B", 13.3, 2.3, -14, -Math.PI / 2, "#2fd4c4"],
     ["FOUNDRY", -26, 3.2, -8.4, 0, "#f5ede0"], ["SILO 3", 24, 4.2, 0.6, 0, "#f5ede0"],
     ["MID", 0.7, 2.1, 8, Math.PI / 2, "#f5ede0"], ["A LONG", -33.9, 1.9, 2, Math.PI / 2, "#f5ede0"],
+    ["DOCKS", 29.9, 3.4, 19.5, -Math.PI / 2, "#f5ede0"], ["CRANE 2", 36.4, 9.6, 19.5, -Math.PI / 2, "#ffb347"],
   ];
   for (const [text, x, y, z, ry, color] of signs) {
     const p = panel(text, 4.6, 2.3, color, 64);
     p.position.set(x, y, z);
     p.rotation.y = ry;
     scene.add(p);
+  }
+
+  // --- the docks set piece: apron, gantry crane, a container on the hook.
+  // Pure theatre above and around the container stacks — it gives the east
+  // lane a skyline of its own and a landmark every callout can lean on.
+  const apron = new THREE.Mesh(new THREE.PlaneGeometry(15, 21), mat(0x8f979e, { tex: "concrete" }));
+  apron.rotation.x = -Math.PI / 2; apron.position.set(31, 0.015, 19.5);
+  scene.add(apron);
+  const craneBeam = box(0.8, 0.9, 16.5, mats.metal);
+  craneBeam.position.set(36.8, 11.2, 19.5);
+  scene.add(craneBeam);
+  const craneJib = box(11, 0.6, 0.6, mats.metal);
+  craneJib.position.set(31.6, 10.7, 19.5);
+  scene.add(craneJib);
+  const hookLine = box(0.08, 3.2, 0.08, mat(0x333333));
+  hookLine.position.set(28.5, 9, 19.5);
+  scene.add(hookLine);
+  const hanging = box(6, 2.6, 2.4, mats.contA);
+  hanging.position.set(28.5, 6.2, 19.5);
+  hanging.rotation.z = 0.02;
+  scene.add(hanging);
+  // gantry beam over the mid door, high enough to duck nothing
+  const gantry = box(7.6, 0.5, 0.7, mats.metal);
+  gantry.position.set(0, 5.6, -5);
+  scene.add(gantry);
+  const gantrySign = panel("MID GANTRY", 3.8, 0.9, "#f5ede0", 48);
+  gantrySign.position.set(0, 5.55, -4.6);
+  scene.add(gantrySign);
+
+  // --- dressing: barrel clusters on their collider blocks, oil stains,
+  // and the world outside the walls — silhouettes and smokestacks so the
+  // yard reads as one corner of a much bigger works.
+  for (const [x, z] of [[-8, 12], [14, -20], [-20, 16]]) {
+    for (const [ox, oz, c] of [[-0.24, -0.24, 0x7a4a21], [0.24, 0.2, 0x31556b], [0, 0.28, 0x5d6d35]]) {
+      const b = new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.21, 1.1, 10), mat(c, { tex: "metal" }));
+      b.position.set(x + ox, 0.55, z + oz);
+      scene.add(b);
+    }
+  }
+  for (const [x, z, r] of [[-4, -14, 2.6], [18, 20, 3.2], [-30, 12, 2.2], [8, -26, 2.8], [30, -16, 2.4]]) {
+    const stain = new THREE.Mesh(new THREE.CircleGeometry(r, 18), new THREE.MeshBasicMaterial({ color: 0x14161a, transparent: true, opacity: 0.35 }));
+    stain.rotation.x = -Math.PI / 2; stain.position.set(x, 0.03, z);
+    scene.add(stain);
+  }
+  const silhouette = mat(0x39434f, { tex: "concrete" });
+  for (const [x, z, w, h] of [[-52, -20, 10, 14], [-40, -46, 14, 20], [2, -50, 18, 12], [32, -47, 12, 24], [54, -28, 10, 16], [56, 8, 12, 18], [50, 38, 16, 10], [-50, 32, 12, 15], [-56, -2, 10, 22]]) {
+    const m = box(w, h, w, silhouette);
+    m.position.set(x, h / 2, z);
+    scene.add(m);
+  }
+  for (const [x, z, h] of [[-45, -16, 17], [-47, -4, 13]]) {
+    const stack = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.4, h, 12), silhouette);
+    stack.position.set(x, h / 2, z);
+    scene.add(stack);
+    const tip = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 6), mat(0xff7733, { emissive: PAL.emberGlow, ei: 1.2 }));
+    tip.position.set(x, h + 0.4, z);
+    scene.add(tip);
   }
 
   const nav = NODES.map(([x, z], i) => ({ i, x, z, next: [] }));

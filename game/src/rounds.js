@@ -65,7 +65,7 @@ export class Rounds {
     this.swapped = false;
     for (const f of this.fighters) {
       f.money = RULES.startMoney;
-      if (!f.isPlayer) { f.gun = new Gun(WEAPONS.pistol); f.armor = 0; f.grenade = false; f.kit = false; f.smokes = 0; }
+      if (!f.isPlayer) { f.gun = new Gun(WEAPONS.pistol); f.armor = 0; f.grenade = false; f.kit = false; f.smokes = 0; f.inc = 0; }
     }
     this.hooks.resetPlayerLoadout(true);
     this.nextRound();
@@ -93,7 +93,7 @@ export class Rounds {
       f.reset(sp, this.swapped ? (f.team === "us" ? Math.PI : 0) : undefined);
       if (!survived) { // the dead come back with a pistol and no armor
         if (f.isPlayer) this.hooks.resetPlayerLoadout(false);
-        else { f.gun = new Gun(WEAPONS.pistol); f.armor = 0; f.grenade = false; }
+        else { f.gun = new Gun(WEAPONS.pistol); f.armor = 0; f.grenade = false; f.inc = 0; f.smokes = 0; }
       } else if (f.isPlayer) {
         this.hooks.refillPlayerAmmo();
       } else {
@@ -113,11 +113,20 @@ export class Rounds {
   botBuy(f) {
     if (f.isPlayer || typeof f.money !== "number") return;
     if (f.money >= 650 && f.armor < 50) { f.armor = 100; f.money -= 650; }
-    if (f.money >= 2700 && f.gun.def !== WEAPONS.rifle) { f.gun = new Gun(WEAPONS.rifle); f.money -= 2700; }
+    // long guns by wallet and temperament: the rich anchor takes the LMG and
+    // becomes a lane of his own; everyone else takes the rifle; a mid wallet
+    // on a pistol upgrades the pistol before it dreams bigger.
+    const heavy = f.name === "MAGMA" || f.name === "HOLT" || f.name === "OTIS";
+    if (f.money >= 3300 && heavy && f.gun.def !== WEAPONS.lmg) { f.gun = new Gun(WEAPONS.lmg); f.money -= 3300; }
+    else if (f.money >= 2700 && f.gun.def !== WEAPONS.rifle) { f.gun = new Gun(WEAPONS.rifle); f.money -= 2700; }
     else if (f.money >= 1200 && f.gun.def === WEAPONS.pistol) { f.gun = new Gun(WEAPONS.smg); f.money -= 1200; }
+    else if (f.money >= 700 && f.gun.def === WEAPONS.pistol && this.round > 1) { f.gun = new Gun(WEAPONS.revolver); f.money -= 700; }
     if (f.money >= 300 && !f.grenade) { f.grenade = true; f.money -= 300; }
     if (f.team === this.defendTeam() && !f.kit && f.money >= 400) { f.kit = true; f.money -= 400; }
     if (f.team === this.attackTeam() && !f.smokes && f.money >= 250) { f.smokes = 1; f.money -= 250; }
+    // incendiary: attackers burn the entry before they plant; defenders
+    // burn the choke and make the attackers pay for the doorway.
+    if (!f.inc && f.money >= 350 && (f.team === this.attackTeam() || f.name === "WARD" || f.name === "PETRA")) { f.inc = 1; f.money -= 350; }
   }
 
   awardKill(killer) {
@@ -193,8 +202,10 @@ export class Rounds {
       }
       const c = this.carrier;
       if (c && c.alive && c.state !== "channel" && this.siteAt(c.pos) === this.siteChoice) {
-        // smoke the entry, then plant — the carrier covers its own work
+        // smoke the entry, burn the doorway, then plant — the carrier
+        // covers its own work with whatever the buy phase left in its hands
         if (c.smokes > 0 && this.hooks.botSmoke) { c.smokes--; this.hooks.botSmoke(c, this.siteChoice); }
+        if (c.inc > 0 && this.hooks.botIncendiary) { c.inc--; this.hooks.botIncendiary(c, this.siteChoice); }
         c.state = "channel"; c.channelKind = "plant"; c.channelSite = this.siteChoice; c.channel = 0;
         c.channelYaw = this.attack === "us" ? 0 : Math.PI;
       }

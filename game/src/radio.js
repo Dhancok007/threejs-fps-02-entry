@@ -71,4 +71,8 @@ export class Radio {
   blinded(bot) { this.say(bot, `Flashed — I'm blind, hold my angle!`); }
 
   smoke(bot, zone) { this.say(bot, `Smoke out — ${zone} is cut off.`); }
+
+  incendiary(bot, zone) { this.say(bot, `Incendiary out — ${zone} is burning, nobody crosses that.`); }
+
+  burning(bot) { this.say(bot, `I'm in the fire at ${zoneAt(bot.pos.x, bot.pos.z)} — moving out!`); }
 }

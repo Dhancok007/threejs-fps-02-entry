@@ -13,7 +13,7 @@ import * as Snd from "./audio.js";
 import { HUD } from "./hud.js";
 import { Rounds, RULES } from "./rounds.js";
 import { Radio } from "./radio.js";
-import { addSmoke, tickSmokes } from "./fx.js";
+import { addSmoke, addFire, inFire, tickSmokes } from "./fx.js";
 
 const params = new URLSearchParams(location.search);
 const shotMode = params.get("shot");
@@ -60,7 +60,7 @@ function freshLoadout() {
     primary: null,
     pistol: { key: "pistol", gun: new Gun(WEAPONS.pistol) },
     knife: { key: "knife", gun: new Gun(WEAPONS.knife) },
-    util: { frag: 0, smoke: 0, flash: 0 },
+    util: { frag: 0, smoke: 0, flash: 0, inc: 0 },
   };
   cur = "pistol";
   utilSel = "frag";
@@ -89,7 +89,10 @@ function owns(id) {
   if (id === "grenade") return inv.util.frag > 0;
   if (id === "smoke") return inv.util.smoke > 0;
   if (id === "flash") return inv.util.flash > 0;
+  if (id === "incendiary") return inv.util.inc > 0;
   if (id === "pistol") return true;
+  const def = WEAPONS[id];
+  if (def && def.slot === 2) return !!inv.pistol && inv.pistol.gun.def === def;
   return !!inv.primary && inv.primary.gun.def === WEAPONS[id];
 }
 
@@ -103,6 +106,7 @@ function buy(id) {
   else if (id === "grenade") inv.util.frag++;
   else if (id === "smoke") inv.util.smoke++;
   else if (id === "flash") inv.util.flash++;
+  else if (id === "incendiary") inv.util.inc++;
   else if (WEAPONS[id].slot === 1) { inv.primary = { key: id, gun: new Gun(WEAPONS[id]) }; cur = "primary"; swapVM(id); }
   else inv.pistol = { key: id, gun: new Gun(WEAPONS[id]) };
   Snd.hitmarkSnd(false);
@@ -198,14 +202,14 @@ function tryBotShoot(bot) {
   return true;
 }
 
-// --- utility: frag / smoke / flash -------------------------------------------
-const grenades = [], flashes = [], smokeFx = [];
+// --- utility: frag / smoke / flash / incendiary ------------------------------
+const grenades = [], flashes = [], smokeFx = [], fireFx = [];
 const nadeMesh = (color = 0x4a5a34) => new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8), new THREE.MeshBasicMaterial({ color }));
 function throwGrenade(from, dir, kind = "frag") {
-  const m = nadeMesh(kind === "smoke" ? 0x8b95a1 : kind === "flash" ? 0xd8d3c3 : 0x4a5a34);
+  const m = nadeMesh(kind === "smoke" ? 0x8b95a1 : kind === "flash" ? 0xd8d3c3 : kind === "inc" ? 0xc23c14 : 0x4a5a34);
   const p = new THREE.Vector3(from.pos.x, 1.45, from.pos.z);
   scene.add(m);
-  grenades.push({ m, p, v: new THREE.Vector3(dir.x * 15, 5.2, dir.z * 15), t: kind === "flash" ? 0.95 : 1.7, owner: from, kind });
+  grenades.push({ m, p, v: new THREE.Vector3(dir.x * 15, 5.2, dir.z * 15), t: kind === "flash" ? 0.95 : kind === "inc" ? 1.15 : 1.7, owner: from, kind });
   Snd.throwSnd();
 }
 function deploySmoke(x, z) {
@@ -216,6 +220,29 @@ function deploySmoke(x, z) {
   m.scale.setScalar(0.6);
   scene.add(m);
   smokeFx.push({ m, age: 0 });
+}
+// An incendiary burst: a scorch disc, a ring of flame cones that lick and
+// lean, and seven seconds in which that patch of ground belongs to nobody.
+function deployFire(x, z, owner = null) {
+  addFire(x, z, 4.4, 7, owner);
+  const grp = new THREE.Group();
+  const scorch = new THREE.Mesh(new THREE.CircleGeometry(4.4, 22),
+    new THREE.MeshBasicMaterial({ color: 0x180c06, transparent: true, opacity: 0.55 }));
+  scorch.rotation.x = -Math.PI / 2; scorch.position.y = 0.045;
+  grp.add(scorch);
+  const cones = [];
+  for (let i = 0; i < 13; i++) {
+    const a = (i / 13) * Math.PI * 2, rr = 0.7 + (i % 4) * 0.95;
+    const h = 1.15 + (i % 3) * 0.4;
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.42, h, 6),
+      new THREE.MeshBasicMaterial({ color: i % 2 ? 0xff7a1e : 0xffb03a, transparent: true, opacity: 0.88 }));
+    cone.position.set(Math.cos(a) * rr, h / 2, Math.sin(a) * rr);
+    grp.add(cone); cones.push(cone);
+  }
+  grp.position.set(x, 0, z);
+  scene.add(grp);
+  fireFx.push({ grp, cones, age: 0 });
+  Snd.boom();
 }
 function explode(g) {
   scene.remove(g.m);
@@ -273,6 +300,7 @@ function updateGrenades(dt) {
       grenades.splice(i, 1);
       if (g.kind === "smoke") { scene.remove(g.m); deploySmoke(g.p.x, g.p.z); }
       else if (g.kind === "flash") flashPop(g);
+      else if (g.kind === "inc") { scene.remove(g.m); deployFire(g.p.x, g.p.z, g.owner); }
       else explode(g);
     }
   }
@@ -293,7 +321,30 @@ function updateGrenades(dt) {
     if (s.age > 13.5) s.m.material.opacity = Math.max(0, 0.52 * (15 - s.age) / 1.5);
     if (s.age >= 15) { scene.remove(s.m); smokeFx.splice(i, 1); }
   }
+  for (let i = fireFx.length - 1; i >= 0; i--) {
+    const s = fireFx[i];
+    s.age += dt;
+    for (let j = 0; j < s.cones.length; j++) {
+      const c = s.cones[j];
+      c.scale.set(1, 0.85 + Math.sin(s.age * 11 + j * 1.7) * 0.3, 1);
+      c.rotation.y = s.age * 2 + j;
+      if (s.age > 5.5) c.material.opacity = Math.max(0, 0.85 * (7 - s.age) / 1.5);
+    }
+    if (s.age >= 7) { scene.remove(s.grp); fireFx.splice(i, 1); }
+  }
+  // --- burning: fire damage lands in half-second chunks so the kill feed
+  // and hit feedback stay readable; the thrower owns the damage.
+  for (const f of fighters) {
+    if (!f.alive) continue;
+    const zone = inFire(f.pos.x, f.pos.z);
+    if (!zone) { burnAcc.delete(f); continue; }
+    const acc = (burnAcc.get(f) || 0) + 30 * dt;
+    if (!f.isPlayer) radio.burning(f);
+    if (acc >= 7) { applyDamage(f, acc, false, zone.owner); burnAcc.set(f, 0); }
+    else burnAcc.set(f, acc);
+  }
 }
+const burnAcc = new Map();
 
 // --- rounds -----------------------------------------------------------------
 const rounds = new Rounds(fighters, player, nav, {
@@ -334,6 +385,14 @@ const rounds = new Rounds(fighters, player, nav, {
     deploySmoke(x, z);
     radio.smoke(bot, zoneAt(x, z));
   },
+  botIncendiary: (bot, siteKey) => {
+    const s = SITES[siteKey];
+    // burn the ground between the carrier and the plant spot: the doorway
+    // the defenders must cross to stop the plant
+    const x = bot.pos.x + (s.x - bot.pos.x) * 0.45, z = bot.pos.z + (s.z - bot.pos.z) * 0.45;
+    deployFire(x, z, bot);
+    radio.incendiary(bot, zoneAt(x, z));
+  },
 });
 
 // --- input ------------------------------------------------------------------
@@ -359,7 +418,7 @@ addEventListener("keydown", (e) => {
   if (e.code === "KeyB" && rounds.phase === "buy" && player.alive) {
     hud.buyVisible ? hud.buyClose() : hud.buyOpen(player, owns);
   } else if (e.code === "Digit1" && inv.primary) { cur = "primary"; swapVM(inv.primary.key); }
-  else if (e.code === "Digit2") { cur = "pistol"; swapVM("pistol"); }
+  else if (e.code === "Digit2") { cur = "pistol"; swapVM(inv.pistol ? inv.pistol.key : "pistol"); }
   else if (e.code === "Digit3") { cur = "knife"; swapVM("knife"); }
   else if (e.code === "KeyR") startReload(curGun());
   else if (e.code === "KeyG") playerThrow();
@@ -378,11 +437,11 @@ function startReload(gun) {
   Snd.reloadSnd();
 }
 
-const UTIL_ORDER = ["frag", "smoke", "flash"];
+const UTIL_ORDER = ["frag", "smoke", "flash", "inc"];
 function cycleUtil() {
   const i = UTIL_ORDER.indexOf(utilSel);
-  for (let k = 1; k <= 3; k++) {
-    const next = UTIL_ORDER[(i + k) % 3];
+  for (let k = 1; k <= UTIL_ORDER.length; k++) {
+    const next = UTIL_ORDER[(i + k) % UTIL_ORDER.length];
     if (inv.util[next] > 0) { utilSel = next; return; }
   }
 }
@@ -522,7 +581,7 @@ function step(dt) {
   vmHolder.position.z *= Math.pow(0.0001, dt); // viewmodel kick recovery
   vmHolder.position.y = scoped ? -0.14 : 0;
   hud.vitals(player, curGun());
-  hud.utilLine(`FRAG ×${inv.util.frag} · SMOKE ×${inv.util.smoke} · FLASH ×${inv.util.flash} — G throws ${utilSel.toUpperCase()}${inv.util.frag + inv.util.smoke + inv.util.flash > 1 ? ", Q switches" : ""}`);
+  hud.utilLine(`FRAG ×${inv.util.frag} · SMOKE ×${inv.util.smoke} · FLASH ×${inv.util.flash} · INC ×${inv.util.inc} — G throws ${utilSel.toUpperCase()}${inv.util.frag + inv.util.smoke + inv.util.flash + inv.util.inc > 1 ? ", Q switches" : ""}`);
   hud.top(rounds.score.us, rounds.score.them, rounds.phaseLabel(), rounds.clockSeconds(), !!rounds.planted);
   hud.alive(fighters);
   mapT -= dt;
@@ -575,16 +634,20 @@ function stageShot(kind) {
   } else if (kind === "play") {
     rounds.phase = "live"; rounds.phaseT = 76;
     inv.primary = { key: "rifle", gun: new Gun(WEAPONS.rifle) };
-    inv.util = { frag: 1, smoke: 1, flash: 0 };
+    inv.util = { frag: 1, smoke: 1, flash: 0, inc: 1 };
     cur = "primary"; swapVM("rifle");
     player.pos.set(-7, 0, 6); player.yaw = 0.24; player.money = 1240; player.hp = 82;
     const them = fighters.filter((f) => f.team === "them");
     setBot(them[0], -11.5, -2.5, Math.PI * 0.94); setBot(them[1], 2.5, -7.5, Math.PI * 0.88);
+    setBot(them[2], 15.5, -12.5, Math.PI * 0.8);
     const us = fighters.filter((f) => f.team === "us" && !f.isPlayer);
     setBot(us[0], -3.8, 8.6, 0.12);
+    setBot(us[1], -13.5, 1.8, 0.3);
     deploySmoke(3.5, -5);
+    deployFire(-4.5, -2.5, them[1]);
     hud.radio("VIPER", "Entry", "2 spotted MID SPINE — taking contact!", "us");
     hud.radio("JUNO", "Support", "Smoke is up on MID — swing on my flash.", "us");
+    hud.radio("SABLE", "Support", "Incendiary out — MID SPINE is burning, nobody crosses that.", "them");
     hud.dmgNum(innerWidth * 0.44, innerHeight * 0.38, 34, false, true);
     lastSeenAt.set(them[0], 0); lastSeenAt.set(them[1], 0);
     matchT = 1;
@@ -596,13 +659,14 @@ function stageShot(kind) {
     rounds.planted = { site: "A", fuse: 23 };
     player.pos.set(-16.8, 0, -1.8); player.yaw = 0.98; player.money = 3100;
     inv.primary = { key: "rifle", gun: new Gun(WEAPONS.rifle) };
-    inv.util = { frag: 0, smoke: 1, flash: 1 };
+    inv.util = { frag: 0, smoke: 1, flash: 1, inc: 0 };
     cur = "primary"; swapVM("rifle");
     const them = fighters.filter((f) => f.team === "them");
     setBot(them[0], -25.2, -10.2, Math.PI * 0.8); // on the charge, defusing
     const us = fighters.filter((f) => f.team === "us" && !f.isPlayer);
-    setBot(us[0], -24, -8, 0);
+    setBot(us[0], -19.5, -11.5, 0.5);
     deploySmoke(-16.5, -13);
+    deployFire(-23, -5.5, them[0]);
     hud.radio("WARD", "Entry", "Charge is down at A — collapse, NOW.", "them");
     hud.radio("IRONS", "Carrier", "Defusing — kit on, this is fast. Hold angles!", "them");
     hud.radio("MAGMA", "Carrier", "Holding A LONG — they are not through me.", "us");
