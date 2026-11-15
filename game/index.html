@@ -58,14 +58,37 @@
   /* kill feed + alive pips */
   #feed{position:absolute;right:22px;top:70px;text-align:right;font-size:13px;line-height:1.7;color:var(--dim)}
   #feed b{color:var(--ink)} #feed .k-us{color:var(--ember2)} #feed .k-them{color:var(--teal)}
-  #alive{position:absolute;left:22px;top:70px;font-size:13px;color:var(--dim);line-height:1.7}
+  #alive{position:absolute;left:22px;top:226px;font-size:13px;color:var(--dim);line-height:1.7}
   .pip{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;background:#3a3a42}
   .pip.us{background:var(--ember)} .pip.them{background:var(--teal)} .pip.dead{opacity:.22}
+  /* minimap + radio net */
+  #minimap{position:absolute;left:22px;top:70px;border:1px solid var(--line);border-radius:8px;background:#12151a}
+  #radio{position:absolute;left:22px;top:262px;width:360px;font-size:12.5px;line-height:1.55;color:var(--ink)}
+  #radio .rline{background:rgba(10,12,15,.55);border-left:3px solid var(--line);padding:2px 8px;margin-top:3px;border-radius:0 6px 6px 0}
+  /* scoreboard */
+  #scoreboard{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(5,6,8,.55)}
+  #scoreboard table{border-collapse:collapse;background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden;min-width:520px}
+  #scoreboard th,#scoreboard td{padding:7px 14px;font-size:14px;text-align:right}
+  #scoreboard th{color:var(--dim);font-size:11px;letter-spacing:1.5px;text-align:right}
+  #scoreboard td:first-child,#scoreboard th:first-child{text-align:left;font-weight:700}
+  #scoreboard td:nth-child(2),#scoreboard th:nth-child(2){text-align:left;color:var(--dim);font-weight:400}
+  #scoreboard tr.teamrow td{text-align:left;font-weight:800;letter-spacing:1px;background:rgba(255,255,255,.05)}
+  #scoreboard tr.dead td{opacity:.45}
+  /* flash + floating damage numbers */
+  #flashfx{position:absolute;inset:0;background:#fff8ec;opacity:0;pointer-events:none}
+  #dmglayer{position:absolute;inset:0;overflow:hidden}
+  .dmgnum{position:absolute;font-weight:800;font-size:17px;color:#ffd9a0;text-shadow:0 1px 6px rgba(0,0,0,.8);
+    transform:translate(-50%,-50%);animation:dmgfloat .75s ease-out forwards}
+  .dmgnum.head{color:#ff5147;font-size:21px}
+  @keyframes dmgfloat{from{opacity:1;margin-top:0}to{opacity:0;margin-top:-46px}}
+  #utilline{font-size:11.5px;color:var(--teal);margin-top:2px;font-weight:600}
   /* buy menu */
   #buy{position:absolute;inset:0;background:rgba(5,6,8,.72);display:none;pointer-events:auto}
-  #buy .sheet{max-width:760px;margin:7vh auto;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px 26px}
+  #buy .sheet{max-width:840px;margin:4vh auto;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px 26px}
   #buy h2{margin:0 0 2px;font-size:22px} #buy .cash{color:var(--good);font-weight:700}
   #buy .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 22px;margin-top:14px}
+  .buysec{grid-column:1/-1;font-size:11px;letter-spacing:2px;color:var(--ember2);font-weight:800;margin-top:6px}
+  .buyitem .bdesc{display:block;font-size:11.5px;color:var(--dim);margin-top:1px}
   .buyitem{display:flex;justify-content:space-between;gap:12px;padding:9px 12px;border:1px solid var(--line);border-radius:9px;font-size:14px}
   .buyitem .key{color:var(--ember2);font-weight:800}
   .buyitem.owned{opacity:.45} .buyitem.cant{opacity:.45}
@@ -97,8 +120,16 @@
     <div class="cell" id="score-them"><div class="lab">WARDENS</div><div class="val">0</div></div>
   </div>
   <div id="planted">● BOMB PLANTED</div>
+  <canvas id="minimap" width="184" height="146"></canvas>
   <div id="alive"></div>
+  <div id="radio"></div>
   <div id="feed"></div>
+  <div id="scoreboard"><table>
+    <thead><tr><th>PLAYER</th><th>ROLE</th><th>K</th><th>D</th><th>A</th><th>DMG</th><th>FUNDS</th></tr></thead>
+    <tbody id="boardbody"></tbody>
+  </table></div>
+  <div id="flashfx"></div>
+  <div id="dmglayer"></div>
   <div id="vitals">
     <div id="hp-row"><div id="hp">100</div><div id="armor">🛡 0</div></div>
     <div id="hpbar"><div id="hpfill"></div></div>
@@ -107,7 +138,8 @@
   <div id="weaponbox">
     <div id="wname">PISTOL</div>
     <div id="ammo">12 <span class="res">/ 48</span></div>
-    <div id="hintline">R reload · B buy · G grenade</div>
+    <div id="utilline"></div>
+    <div id="hintline">R reload · B buy · G throw · Q utility · Tab scores</div>
   </div>
   <div id="cross"></div><div id="hitmark"></div><div id="dmgvin"></div>
   <div id="banner"><div class="big"></div><div class="sub"></div></div>
@@ -130,8 +162,10 @@
     <div><b>W A S D</b> move</div>
     <div><b>Mouse</b> look · <b>Click</b> fire</div>
     <div><b>Shift / C</b> walk / crouch — quiet and accurate</div>
-    <div><b>1 2 3</b> rifle / pistol / grenade slots</div>
-    <div><b>R</b> reload · <b>B</b> buy menu · <b>E (hold)</b> plant</div>
+    <div><b>1 2 3</b> primary / pistol / knife · <b>Right-click</b> DMR scope</div>
+    <div><b>G</b> throw utility · <b>Q</b> cycle frag / smoke / flash</div>
+    <div><b>R</b> reload · <b>B</b> buy menu · <b>E (hold)</b> plant / defuse · <b>Tab</b> scoreboard</div>
+    <div><b>Sides swap</b> after round 6 — attackers become defenders</div>
   </div>
   <button id="startbtn">DEPLOY</button>
   <p style="font-size:12px">First to 7 rounds takes the match. Headshots pay double damage — accuracy beats spraying.</p>
